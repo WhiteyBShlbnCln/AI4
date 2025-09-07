@@ -1,83 +1,64 @@
 ﻿import os
-import requests
-import time
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+from runwayml import RunwayML, TaskFailedError
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-RUNWAY_KEY = os.getenv("RUNWAY_API_KEY")
+RUNWAY_KEY = os.getenv("RUNWAYML_API_SECRET")
 
-def generate_from_runway(prompt: str, mode: str = "image"):
-    url = "https://api.runwayml.com/v1/query"
-    headers = {"Authorization": f"Bearer {RUNWAY_KEY}"}
-    data = {"input": prompt, "model": "stable-diffusion-v1-5" if mode == "image" else "gen-2"}
+# Проверка наличия токена и ключа
+if not BOT_TOKEN or not RUNWAY_KEY:
+    raise RuntimeError("🚨 Нужно установить переменные окружения BOT_TOKEN и RUNWAYML_API_SECRET")
 
-    # Создаём задачу
-    r = requests.post(url, headers=headers, json=data)
-    response = r.json()
-    print("Create job response:", response)
-
-    job_id = response.get("id")
-    if not job_id:
-        return {"error": "Не удалось создать задачу", "details": response}
-
-    # Ждём выполнения задачи
-    status = response.get("status")
-    while status != "succeeded":
-        time.sleep(3)
-        check = requests.get(f"{url}/{job_id}", headers=headers)
-        status = check.json().get("status")
-        print("Status:", status)
-        if status == "failed":
-            return {"error": "Генерация не удалась", "details": check.json()}
-
-    output = check.json().get("output")
-    return {"output": output}
+client = RunwayML(api_key=RUNWAY_KEY)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! ✨\n"
-        "Напиши /img описание для картинки 🖼️\n"
-        "или /vid описание для видео 🎬"
+        "Привет! Напиши:\n"
+        "/img описание — для изображения\n"
+        "/vid описание — для видео"
     )
 
 async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt:
-        await update.message.reply_text("Напиши описание после команды!")
-        return
+        return await update.message.reply_text("Напиши текст после /img!")
 
     message = await update.message.reply_text("⏳ Генерирую изображение...")
-
     try:
-        result = generate_from_runway(prompt, "image")
-        if "output" in result and result["output"]:
-            image_url = result["output"][0]
-            await message.delete()
-            await update.message.reply_photo(photo=image_url)
-        else:
-            await message.edit_text("❌ Ошибка генерации: результат пустой или ошибка API.")
+        task = client.text_to_image.create(
+            model="gen4_image",
+            prompt_text=prompt,
+            ratio="1920:1080"
+        ).wait_for_task_output()
+        image_url = task.output[0]
+        await message.delete()
+        await update.message.reply_photo(photo=image_url)
+    except TaskFailedError as e:
+        await message.edit_text(f"❌ Генерация не удалась:\n{e.task_details}")
     except Exception as e:
-        await message.edit_text(f"❌ Ошибка генерации: {e}")
+        await message.edit_text(f"❌ Ошибка: {e}")
 
 async def generate_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt:
-        await update.message.reply_text("Напиши описание после команды!")
-        return
+        return await update.message.reply_text("Напиши текст после /vid!")
 
-    message = await update.message.reply_text("⏳ Генерирую видео (может занять до 1–2 минут)...")
-
+    message = await update.message.reply_text("⏳ Генерирую видео...")
     try:
-        result = generate_from_runway(prompt, "video")
-        if "output" in result and result["output"]:
-            video_url = result["output"][0]
-            await message.delete()
-            await update.message.reply_video(video=video_url)
-        else:
-            await message.edit_text("❌ Ошибка генерации: результат пустой или ошибка API.")
+        task = client.image_to_video.create(
+            model="gen4_turbo",
+            prompt_text=prompt,
+            ratio="1280:720",
+            duration=5
+        ).wait_for_task_output()
+        video_url = task.output[0]
+        await message.delete()
+        await update.message.reply_video(video=video_url)
+    except TaskFailedError as e:
+        await message.edit_text(f"❌ Генерация не удалась:\n{e.task_details}")
     except Exception as e:
-        await message.edit_text(f"❌ Ошибка генерации: {e}")
+        await message.edit_text(f"❌ Ошибка: {e}")
 
 app = Application.builder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
