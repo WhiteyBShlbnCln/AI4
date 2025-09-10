@@ -19,14 +19,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Загружаем переменные окружения
+# Загружаем переменные окружения
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-RUNWAY_API_KEY = os.getenv("RUNWAYML_API_SECRET")
+RUNWAY_API_KEY = os.getenv("RUNWAY_API_KEY") or os.getenv("RUNWAYML_API_SECRET")
 
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
 if not RUNWAY_API_KEY:
-    raise RuntimeError("RUNWAYML_API_SECRET is missing")
+    raise RuntimeError("RUNWAY_API_KEY (или RUNWAYML_API_SECRET) is missing")
 
 # Ключи для состояния пользователя
 MODE_KEY = "mode"
