@@ -91,7 +91,7 @@ async def start_generation(endpoint: str, payload: Dict[str, Any], client: httpx
     resp = await client.post(url, headers=runay_headers(), json=payload, timeout=600.0)
     # don't raise yet — we want to include body in logs if error
     if resp.status_code >= 400:
-        text = await resp.text()
+        text = resp.text
         logger.error("Runway start_generation error status=%s body=%s", resp.status_code, text)
         resp.raise_for_status()
     data = await resp.json()
