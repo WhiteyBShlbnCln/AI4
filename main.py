@@ -108,7 +108,7 @@ async def poll_task(task_id: str, client: httpx.AsyncClient, max_wait: int = 300
     while waited < max_wait:
         resp = await client.get(url, headers=runay_headers(), timeout=120.0)
         if resp.status_code >= 400:
-            text = await resp.text()
+            text = resp.text
             logger.error("Runway poll_task error status=%s body=%s", resp.status_code, text)
             resp.raise_for_status()
         j = await resp.json()
