@@ -19,15 +19,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Загружаем переменные окружения
-# Загружаем переменные окружения
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-RUNWAY_API_KEY = os.getenv("RUNWAY_API_KEY") or os.getenv("RUNWAYML_API_SECRET")
+RUNWAY_API_KEY = os.getenv("RUNWAYML_API_SECRET")
 
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
 if not RUNWAY_API_KEY:
-    raise RuntimeError("RUNWAY_API_KEY (или RUNWAYML_API_SECRET) is missing")
+    raise RuntimeError("RUNWAYML_API_SECRET is missing")
 
 # Ключи для состояния пользователя
 MODE_KEY = "mode"
@@ -113,10 +112,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     img_bytes = await file.download_as_bytearray()
     data_uri = image_bytes_to_data_uri(bytes(img_bytes))
     await update.message.reply_text("Генерирую видео...")
-    await asyncio.to_thread(generate_image_video, update, context, data_uri)
+    await generate_image_video(update, context, data_uri)
 
 # -------------------- RUNWAY --------------------
-def generate_image_video(update, context, data_uri):
+async def generate_image_video(update, context, data_uri):
     client = RunwayML(api_key=RUNWAY_API_KEY)
     prompt = context.user_data[PROMPT_KEY]
     duration = context.user_data[DURATION_KEY]
@@ -135,17 +134,13 @@ def generate_image_video(update, context, data_uri):
 
         logger.info(f"Runway image-to-video response: {task}")
         video_url = task.output[0] if task.output else None
-        asyncio.run(send_video(update, video_url, context))
+        await send_video(update, video_url, context)
     except Exception as e:
         error_details = traceback.format_exc()
         logger.error(f"Runway image-to-video error: {e}\n{error_details}")
-        asyncio.run(send_error(update, f"Ошибка при генерации (image→video): {e}"))
+        await send_error(update, f"Ошибка при генерации (image→video): {e}")
 
 async def generate_text_video(update, context):
-    await update.message.reply_text("Генерирую видео...")
-    await asyncio.to_thread(_generate_text_video, update, context)
-
-def _generate_text_video(update, context):
     client = RunwayML(api_key=RUNWAY_API_KEY)
     prompt = context.user_data[PROMPT_KEY]
     duration = context.user_data[DURATION_KEY]
@@ -163,11 +158,11 @@ def _generate_text_video(update, context):
 
         logger.info(f"Runway text-to-video response: {task}")
         video_url = task.output[0] if task.output else None
-        asyncio.run(send_video(update, video_url, context))
+        await send_video(update, video_url, context)
     except Exception as e:
         error_details = traceback.format_exc()
         logger.error(f"Runway text-to-video error: {e}\n{error_details}")
-        asyncio.run(send_error(update, f"Ошибка при генерации (text→video): {e}"))
+        await send_error(update, f"Ошибка при генерации (text→video): {e}")
 
 # -------------------- UTILS --------------------
 async def send_video(update, video_url, context):
@@ -185,7 +180,7 @@ async def send_error(update, message):
     )
 
 # -------------------- MAIN --------------------
-async def main():
+def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(mode_selection, pattern="^mode_"))
@@ -195,7 +190,7 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
 
     logger.info("Бот запущен (run_polling)...")
-    await app.run_polling()
+    app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
